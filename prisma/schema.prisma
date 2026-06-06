@@ -1,0 +1,192 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  DOCTOR
+  PATIENT
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CANCELLED
+  NO_SHOW
+  COMPLETED
+}
+
+enum WaitlistStatus {
+  ACTIVE
+  OFFERED
+  EXPIRED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  phone        String?
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  doctor     Doctor?
+  patient    Patient?
+  auditLogs  AuditLog[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  isRevoked Boolean  @default(false) @map("is_revoked")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Doctor {
+  id            String  @id @default(uuid())
+  userId        String  @unique @map("user_id")
+  licenseNumber String  @unique @map("license_number")
+  specialtyId   String  @map("specialty_id")
+  department    String?
+  bio           String?
+  isAcceptingPatients Boolean @default(true) @map("is_accepting_patients")
+  
+  // Relationships
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialty    Specialty      @relation(fields: [specialtyId], references: [id])
+  availability Availability[]
+  appointments Appointment[]
+  waitlists    Waitlist[]
+
+  @@map("doctors")
+}
+
+model Patient {
+  id        String    @id @default(uuid())
+  userId    String    @unique @map("user_id")
+  mrnFake   String    @unique @map("mrn_fake") // Medical Record Number (fake)
+  dobFake   DateTime  @map("dob_fake") // Date of Birth (fake)
+  address   String?
+  emergencyContact String? @map("emergency_contact")
+  allergies String?
+  
+  // Relationships
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  waitlists    Waitlist[]
+
+  @@map("patients")
+}
+
+model Specialty {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  doctors Doctor[]
+
+  @@map("specialties")
+}
+
+model Availability {
+  id               String   @id @default(uuid())
+  doctorId         String   @map("doctor_id")
+  dayOfWeek        Int      @map("day_of_week") // 0 = Sunday, 1 = Monday, etc.
+  startTime        String   @map("start_time") // HH:MM format
+  endTime          String   @map("end_time")   // HH:MM format
+  slotDurationMins Int      @map("slot_duration_mins") // 15, 20, 30, etc.
+  isActive         Boolean  @default(true) @map("is_active")
+  exceptions       Json?    // Store break times, holidays, etc.
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, dayOfWeek])
+  @@map("availability")
+}
+
+model Appointment {
+  id        String            @id @default(uuid())
+  doctorId  String            @map("doctor_id")
+  patientId String            @map("patient_id")
+  startTime DateTime          @map("start_time")
+  endTime   DateTime          @map("end_time")
+  status    AppointmentStatus @default(BOOKED)
+  reason    String?           // Chief complaint
+  notes     String?           // Visit notes (demo only)
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+  
+  // Relationships
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@unique([doctorId, startTime]) // Prevent double booking
+  @@map("appointments")
+}
+
+model Waitlist {
+  id                String        @id @default(uuid())
+  doctorId          String        @map("doctor_id")
+  patientId         String        @map("patient_id")
+  desiredRangeStart DateTime      @map("desired_range_start")
+  desiredRangeEnd   DateTime      @map("desired_range_end")
+  priority          Int           @default(0) // Higher number = higher priority
+  status            WaitlistStatus @default(ACTIVE)
+  reason            String?
+  offeredSlotTime   DateTime?     @map("offered_slot_time")
+  offerExpiresAt    DateTime?     @map("offer_expires_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  // Relationships
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@unique([doctorId, patientId]) // One waitlist entry per doctor per patient
+  @@map("waitlists")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorUserId String  @map("actor_user_id")
+  action     String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, etc.
+  entityType String   @map("entity_type") // User, Doctor, Appointment, etc.
+  entityId   String?  @map("entity_id")
+  metadata   Json?    // Additional context
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  timestamp  DateTime @default(now())
+
+  // Relationships
+  actor User @relation(fields: [actorUserId], references: [id])
+
+  @@map("audit_logs")
+}
