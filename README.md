@@ -220,4 +220,3 @@ MIT License - This is an academic project for thesis demonstration.
 ---
 
 **⚠️ DISCLAIMER**: This is a test environment for academic purposes. Do not use with real patient data.
-Last updated for thesis test.
