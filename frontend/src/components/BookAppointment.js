@@ -36,7 +36,7 @@ function BookAppointment({ user }) {
     setSuccess('');
 
     try {
-      const startTime = `${appointmentDate}T${appointmentTime}:00.000Z`;
+      const startTime = `${appointmentDate}T${appointmentTime}:00`;
       
       const token = localStorage.getItem('token');
       await axios.post(`${API_URL}/appointments`, {
